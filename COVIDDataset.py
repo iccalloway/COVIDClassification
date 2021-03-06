@@ -24,9 +24,11 @@ class COVIDDataset(Dataset):
         return self.data.shape[0]
 
     def collate_batch(self, batch):
-        processed = []
+        inputs = []
+        labels = []
         for item in batch:
             audio, sr = sf.read(os.path.join(self.path, 'AUDIO', item['File_name']+".flac"))
             status = 1 if item['Covid_status'] == 'p' else 0
-            processed.append((torch.tensor(audio),status))
-        return processed
+            inputs.append(audio)
+            labels.append(status)
+        return (inputs, torch.unsqueeze(torch.tensor(labels),0))
