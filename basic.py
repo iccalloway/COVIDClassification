@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     val_prop = 0.2
     grouping_variables = ['Covid_status', 'Gender'] ##For Stratified Split and Sampling
-    data_path = '/home/icalloway/Side Projects/COVIDClassification/Data/Track1_Train/metadata.csv'
+    data_path = '/home/stic/Documents/dicova/data/DiCOVA_Train_Val_Data_Release/metadata.csv'
     samples = 1000
     batch_size = 1
     epochs = 5
