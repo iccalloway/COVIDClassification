@@ -10,18 +10,18 @@ from torch.utils.data.sampler import WeightedRandomSampler
 from torch.optim import AdamW
 
 from COVIDDataset import COVIDDataset
-from COVIDModels import COVIDWav2Vec
+from COVIDModels import COVIDWav2Vec, DenseNet
 
 if __name__ == "__main__":
     device = torch.device('cuda')
 
     val_prop = 0.2
     grouping_variables = ['Covid_status', 'Gender'] ##For Stratified Split and Sampling
-    data_path = '/home/icalloway/Side Projects/COVIDClassification/Data/Track1_Train/metadata.csv'
+    data_path = '/home/izimmerman/Documents/covid_cough/DiCOVA_Train_Val_Data_Release/metadata.csv'
     samples = 1000
     batch_size = 1
     epochs = 5
-    gradient_accumulation = 500
+    gradient_accumulation = 32
     
 
     track1 = COVIDDataset(data_path, grouping_variables)
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     train_sampler = WeightedRandomSampler(
         weights = track1_train_weights,
         replacement=True,
-        num_samples = samples)
+        num_samples = len(train))#samples
 
     train_loader = DataLoader(
         dataset=track1_train,
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     val_sampler = WeightedRandomSampler(
         weights = track1_val_weights,
         replacement=True,
-        num_samples = samples)
+        num_samples = len(val))#samples
 
     val_loader = DataLoader(
         dataset=track1_val,
@@ -58,8 +58,8 @@ if __name__ == "__main__":
         pin_memory = True
     )
 
-
-    model = COVIDWav2Vec(device).to(device)
+    model = DenseNet().to(device)
+    #model = COVIDWav2Vec(device).to(device)
     loss_fn = nn.BCEWithLogitsLoss()
     sigmoid = nn.Sigmoid()
 
@@ -77,6 +77,7 @@ if __name__ == "__main__":
         temp_loss=[]
         accuracy = []
         for i, (inputs, labels) in enumerate(train_loader):
+            inputs = inputs.cuda()
             try:
                 out = model(inputs)
             except RuntimeError:

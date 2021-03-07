@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torchvision.models as models
 
 from transformers import Wav2Vec2Tokenizer, Wav2Vec2Model
 
@@ -20,3 +21,13 @@ class COVIDWav2Vec(nn.Module):
         linear_out = self.linear(pooled)
         return linear_out
 
+class DenseNet(nn.Module):
+    def __init__(self, pretrained=True):
+        super(DenseNet, self).__init__()
+        num_classes = 1 
+        self.model = models.densenet201(pretrained=pretrained)
+        self.model.classifier = nn.Linear(1920, num_classes) # 0, 1 if sigmoid(out)</> 0.5
+        
+    def forward(self, x):
+        output = self.model(x)
+        return output
