@@ -72,3 +72,62 @@ class DiCOVATrack2(Dataset):
             inputs.append(audio)
             labels.append(status)
         return (inputs, torch.unsqueeze(torch.tensor(labels),0))
+
+
+class FSDTrainDataset(Dataset):
+    def __init__(self, path, grouping_variables=['label', 'manually_verified']):
+        data=pd.read_csv(path)
+        data['manually_verified'] = data['manually_verified'].astype(str)
+        self.data = data
+        self.path = os.path.dirname(path).replace('meta','audio_train')
+        classes = data.apply(lambda x:'_'.join(x[grouping_variables]), axis=1).to_frame(name='factor')
+        self.id2label = {k:v for k,v in enumerate(sorted(self.data['label'].unique()))}
+        self.label2id = {v:k for k,v in self.id2label.items()}
+        classes['idx'] = classes.index
+        self.classes = classes
+        self.counts = Counter(self.classes['factor'])
+        return
+
+    def __getitem__(self, i):
+        return self.data.iloc[i]
+
+    def __len__(self):
+        return self.data.shape[0]
+
+    def collate_batch(self, batch):
+        inputs = []
+        labels = []
+        for item in batch:
+            audio, sr = sf.read(os.path.join(self.path, item['fname']))
+            inputs.append(audio)
+            labels.append(self.label2id[item['label']])
+        return (inputs, torch.unsqueeze(torch.tensor(labels),0))
+
+
+class FSDTestDataset(Dataset):
+    def __init__(self, path, grouping_variables=['label']):
+        data=pd.read_csv(path)
+        self.data = data
+        self.path = os.path.dirname(path).replace('meta','audio_test')
+        classes = data.apply(lambda x:'_'.join(x[grouping_variables]), axis=1).to_frame(name='factor')
+        self.id2label = {k:v for k,v in enumerate(sorted(self.data['label'].unique()))}
+        self.label2id = {v:k for k,v in self.id2label.items()}
+        classes['idx'] = classes.index
+        self.classes = classes
+        self.counts = Counter(self.classes['factor'])
+        return
+
+    def __getitem__(self, i):
+        return self.data.iloc[i]
+
+    def __len__(self):
+        return self.data.shape[0]
+
+    def collate_batch(self, batch):
+        inputs = []
+        labels = []
+        for item in batch:
+            audio, sr = sf.read(os.path.join(self.path, item['fname']))
+            inputs.append(audio)
+            labels.append(self.label2id[item['label']])
+        return (inputs, torch.unsqueeze(torch.tensor(labels),0))
