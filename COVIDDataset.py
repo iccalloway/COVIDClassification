@@ -10,9 +10,10 @@ import numpy as np
 import torchaudio
 import torchvision
 from PIL import Image
+from datasetaug import AudioDataset, MelSpectrogram
 
 class COVIDDataset(Dataset):
-    def __init__(self, path, grouping_variables):
+    def __init__(self, path, grouping_variables, cnn = False):
         data=pd.read_csv(path)
         self.data = data
         self.path = os.path.dirname(path)
@@ -20,6 +21,7 @@ class COVIDDataset(Dataset):
         classes['idx'] = classes.index
         self.classes = classes
         self.counts = Counter(self.classes['factor'])
+        self.cnn = cnn
         return
 
     def __getitem__(self, i):
@@ -30,16 +32,22 @@ class COVIDDataset(Dataset):
 
     def collate_batch(self, batch):
         inputs = []
+        transforms = MelSpectrogram(128, mode='train')
         labels = []
         for item in batch:
             audio, sr = sf.read(os.path.join(self.path, 'AUDIO', item['File_name']+".flac"))
             status = 1 if item['Covid_status'] == 'p' else 0
             # process spectrogram
-            audio = extract_spectrogram(audio)
-            inputs.append(audio)
+            if self.cnn:    
+                if np.random.choice([0,1]) == 0:
+                    audio = transforms(audio)
+                else:
+                    audio = extract_spectrogram(audio)
+            inputs.append(audio if not self.cnn else torch.tensor(audio))
             labels.append(status)
-        
-        return (torch.stack(inputs), torch.unsqueeze(torch.tensor(labels),0))
+        if self.cnn:
+            return (torch.stack(inputs), torch.unsqueeze(torch.tensor(labels),0))
+        return inputs, torch.unsqueeze(torch.tensor(labels),0)
 
 def extract_spectrogram(audio):
     sampling_rate = 44100
@@ -60,4 +68,5 @@ def extract_spectrogram(audio):
         spec = np.log(spec+ eps)
         spec = np.asarray(torchvision.transforms.Resize((128, 250))(Image.fromarray(spec)))
         specs.append(spec)
-    return torch.tensor(np.array(specs))
+        values = torch.Tensor(np.array(specs).reshape(-1, 128, 250))
+    return values #torch.tensor(np.array(specs))
