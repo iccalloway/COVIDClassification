@@ -12,17 +12,18 @@ import torchvision
 from PIL import Image
 from datasetaug import AudioDataset, MelSpectrogram
 
+
 class COVIDDataset(Dataset):
-    def __init__(self, path, grouping_variables, cnn = False):
-        data=pd.read_csv(path)
+    def __init__(self, path, grouping_variables):
+        data = pd.read_csv(path)
         self.data = data
         self.path = os.path.dirname(path)
-        classes = data.apply(lambda x:'_'.join(x[grouping_variables]), axis=1).to_frame(name='factor')
-        classes['idx'] = classes.index
+        classes = data.apply(
+            lambda x: "_".join(x[grouping_variables]), axis=1
+        ).to_frame(name="factor")
+        classes["idx"] = classes.index
         self.classes = classes
-        self.counts = Counter(self.classes['factor'])
-        self.cnn = cnn
-        self.seen = set()
+        self.counts = Counter(self.classes["factor"])
         return
 
     def __getitem__(self, i):
@@ -36,22 +37,13 @@ class COVIDDataset(Dataset):
         transforms = MelSpectrogram(128, mode='train')
         labels = []
         for item in batch:
-            audio, sr = sf.read(os.path.join(self.path, 'AUDIO', item['File_name']+".flac"))
-            status = 1 if item['Covid_status'] == 'p' else 0
-            # process spectrogram
-            if self.cnn:    
-                if item['File_name'] not in self.seen:
-                    audio = extract_spectrogram(audio)
-                    self.seen.add(item['File_name'])
-                else:
-                    audio = transforms(audio)
-                    self.seen -= set([item['File_name']])
-                
-            inputs.append(audio if not self.cnn else torch.tensor(audio))
+           audio, sr = sf.read(
+                os.path.join(self.path, "AUDIO", item["File_name"] + ".flac")
+            )
+            status = 1 if item["Covid_status"] == "p" else 0
+            inputs.append(audio)
             labels.append(status)
-        if self.cnn:
-            return (torch.stack(inputs), torch.unsqueeze(torch.tensor(labels),0))
-        return inputs, torch.unsqueeze(torch.tensor(labels),0)
+        return (inputs, torch.unsqueeze(torch.tensor(labels), 0))
 
 def extract_spectrogram(audio):
     sampling_rate = 44100
@@ -72,5 +64,4 @@ def extract_spectrogram(audio):
         spec = np.log(spec+ eps)
         spec = np.asarray(torchvision.transforms.Resize((128, 250))(Image.fromarray(spec)))
         specs.append(spec)
-        values = torch.Tensor(np.array(specs).reshape(-1, 128, 250))
-    return values #torch.tensor(np.array(specs))
+    return torch.tensor(np.array(specs))
