@@ -10,6 +10,7 @@ import numpy as np
 import torchaudio
 import torchvision
 from PIL import Image
+from datasetaug import AudioDataset, MelSpectrogram
 
 
 class COVIDDataset(Dataset):
@@ -33,6 +34,7 @@ class COVIDDataset(Dataset):
 
     def collate_batch(self, batch):
         inputs = []
+        transforms = MelSpectrogram(128, mode='train')
         labels = []
         for item in batch:
            audio, sr = sf.read(

@@ -5,12 +5,39 @@ import torch
 import torch.nn as nn
 
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_curve, auc
 from torch.utils.data import Subset, DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data.sampler import WeightedRandomSampler
 from torch.optim import AdamW
 
 from COVIDDataset import COVIDDataset
 from COVIDModels import COVIDWav2Vec, DenseNet
+
+def evaluate(model, data_loader):
+    model.eval()
+    
+    val_preds = []
+    val_labels = []
+
+    with torch.no_grad():
+        for i, (inputs, label) in enumerate(data_loader):
+            if i == len(data_loader)-1: #last batch not same size as others
+                break
+            if model_type == "cnn":
+                inputs = torch.stack([x.cuda() for x in inputs])
+            label = label.cuda().T
+
+            out = model(inputs)
+            prediction = torch.round(sigmoid(out))
+            
+            val_preds.append(prediction)
+            val_labels.append(label)
+    val_preds = torch.cat(val_preds).squeeze(-1)
+    val_labels = torch.cat(val_labels).squeeze(-1)
+    val_accuracy = torch.sum(val_preds == val_labels).item()/len(val_preds)
+    fpr, tpr, thresholds = roc_curve(val_labels.tolist(), val_preds.tolist(), pos_label=1)
+    return val_accuracy, auc(fpr, tpr)
 
 if __name__ == "__main__":
     device = torch.device("cuda")
@@ -19,7 +46,7 @@ if __name__ == "__main__":
     grouping_variables = ['Covid_status', 'Gender'] ##For Stratified Split and Sampling
     data_path = '/home/izimmerman/Documents/covid_cough/DiCOVA_Train_Val_Data_Release/metadata.csv'
     samples = 1000
-    batch_size = 1
+    batch_size = 8
     epochs = 5
     gradient_accumulation = 32
 
@@ -91,8 +118,10 @@ if __name__ == "__main__":
             ]
         },
     ]
-    optimizer = AdamW(optimizer_grouped_parameters, lr=1e-4)
+    optimizer = AdamW(optimizer_grouped_parameters, lr=1e-5)
     optimizer.zero_grad()
+
+    writer = SummaryWriter("summary/densenet_aug4", purge_step=0)
 
     for a in range(epochs):
         print("Starting Epoch {}...\n=============".format(a))
@@ -121,11 +150,15 @@ if __name__ == "__main__":
                 if len(temp_loss) > 0:
                     mean_loss = sum(temp_loss) / len(temp_loss)
                     print("Training Loss: {}".format(mean_loss))
+                    writer.add_scalar("train/loss", mean_loss, step)
                     temp_loss = []
                 if len(accuracy) > 0:
                     mean_metric = sum(accuracy) / len(accuracy)
                     print("Training Accuracy: {}".format(mean_metric))
+                    writer.add_scalar("train/accuracy", mean_metric, step)
                     accuracy = []
                 print("\n")
                 optimizer.step()
                 optimizer.zero_grad()
+                torch.cuda.empty_cache()        
+                
