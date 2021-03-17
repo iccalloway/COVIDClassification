@@ -46,9 +46,9 @@ if __name__ == "__main__":
     grouping_variables = ['Covid_status', 'Gender'] ##For Stratified Split and Sampling
     data_path = '/home/izimmerman/Documents/covid_cough/DiCOVA_Train_Val_Data_Release/metadata.csv'
     samples = 1000
-    batch_size = 1
+    batch_size = 8
     epochs = 5
-    gradient_accumulation = 100
+    gradient_accumulation = 100//batch_size
     model_type = 'cnn'
     
 
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     optimizer = AdamW(optimizer_grouped_parameters, lr=1e-5)
     optimizer.zero_grad()
 
-    writer = SummaryWriter("summary/densenet_aug2", purge_step=0)
+    writer = SummaryWriter("summary/densenet_aug4", purge_step=0)
 
     for a in range(epochs):
         print("Starting Epoch {}...\n=============".format(a))

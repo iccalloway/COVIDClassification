@@ -22,6 +22,7 @@ class COVIDDataset(Dataset):
         self.classes = classes
         self.counts = Counter(self.classes['factor'])
         self.cnn = cnn
+        self.seen = set()
         return
 
     def __getitem__(self, i):
@@ -39,10 +40,13 @@ class COVIDDataset(Dataset):
             status = 1 if item['Covid_status'] == 'p' else 0
             # process spectrogram
             if self.cnn:    
-                if np.random.choice([0,1]) == 0:
-                    audio = transforms(audio)
-                else:
+                if item['File_name'] not in self.seen:
                     audio = extract_spectrogram(audio)
+                    self.seen.add(item['File_name'])
+                else:
+                    audio = transforms(audio)
+                    self.seen -= set([item['File_name']])
+                
             inputs.append(audio if not self.cnn else torch.tensor(audio))
             labels.append(status)
         if self.cnn:
