@@ -1,18 +1,25 @@
 import gc
+import os
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+from pathlib import Path
 
-from sklearn.model_selection import train_test_split
+
 from sklearn.metrics import roc_curve, auc
+from sklearn.model_selection import train_test_split
 from torch.utils.data import Subset, DataLoader
-from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data.sampler import WeightedRandomSampler
 from torch.optim import AdamW
 
 from COVIDDataset import COVIDDataset
 from COVIDModels import COVIDWav2Vec, DenseNet
+
+def save_model(model, path):
+    model = model.module if hasattr(model, "module") else model
+    Path(path).mkdir(parents=True, exist_ok=True)
+    torch.save(model.state_dict(), os.path.join(path, "model.pt"))
 
 def evaluate(model, data_loader):
     model.eval()
@@ -22,32 +29,40 @@ def evaluate(model, data_loader):
 
     with torch.no_grad():
         for i, (inputs, label) in enumerate(data_loader):
-            if i == len(data_loader)-1: #last batch not same size as others
-                break
-            if model_type == "cnn":
-                inputs = torch.stack([x.cuda() for x in inputs])
             label = label.cuda().T
-
-            out = model(inputs)
+            try:
+                out = model(inputs)
+            except RuntimeError:
+                print("skipping")
+                torch.cuda.empty_cache()
+                gc.collect()
+                continue
+            #out = model(inputs)
             prediction = torch.round(sigmoid(out))
             
             val_preds.append(prediction)
             val_labels.append(label)
-    val_preds = torch.cat(val_preds).squeeze(-1)
-    val_labels = torch.cat(val_labels).squeeze(-1)
-    val_accuracy = torch.sum(val_preds == val_labels).item()/len(val_preds)
-    fpr, tpr, thresholds = roc_curve(val_labels.tolist(), val_preds.tolist(), pos_label=1)
-    return val_accuracy, auc(fpr, tpr)
+            torch.cuda.empty_cache()
+    if len(val_preds) < 1:
+        print("No Predictions")
+        return 0, 0
+    else:
+        val_preds = torch.cat(val_preds).squeeze(-1)
+        val_labels = torch.cat(val_labels).squeeze(-1)
+        val_accuracy = torch.sum(val_preds == val_labels).item()/len(val_preds)
+        fpr, tpr, thresholds = roc_curve(val_labels.tolist(), val_preds.tolist(), pos_label=1)
+        print(auc)
+        return val_accuracy, auc(fpr, tpr)
 
 if __name__ == "__main__":
     device = torch.device("cuda")
 
     val_prop = 0.2
     grouping_variables = ['Covid_status', 'Gender'] ##For Stratified Split and Sampling
-    data_path = './Data/Track1_Train/metadata.csv'
+    data_path = '/home/icalloway/Side Projects/COVIDClassification/Data/Track1_Train/metadata.csv'
     samples = 1000
-    batch_size = 8
-    epochs = 5
+    batch_size = 1
+    epochs = 20
     gradient_accumulation = 256
 
     track1 = COVIDDataset(data_path, grouping_variables)
@@ -66,7 +81,7 @@ if __name__ == "__main__":
     train_sampler = WeightedRandomSampler(
         weights = track1_train_weights,
         replacement=True,
-        num_samples = len(train)#samples
+        num_samples = len(train) #samples
     )
 
     train_loader = DataLoader(
@@ -75,6 +90,7 @@ if __name__ == "__main__":
         sampler=train_sampler,
         pin_memory=True,
         collate_fn=track1.collate_batch,
+        drop_last=True
     )
 
     ##Validation DataLoader
@@ -91,11 +107,19 @@ if __name__ == "__main__":
         num_samples = len(val) #samples
     )
     val_loader = DataLoader(
-        dataset=track1_val, batch_size=batch_size, sampler=val_sampler, pin_memory=True
+        dataset=track1_val,
+        batch_size=batch_size,
+        sampler=val_sampler,
+        pin_memory=True,
+        collate_fn = track1.collate_batch,
+        drop_last=True
     )
 
     #model = DenseNet().to(device)
     model = COVIDWav2Vec(device).to(device)
+    print(torch.load('wav2vec-pretrained-checkpoints/best_track1_long.pt')['model'])
+    model.load_state_dict(torch.load('wav2vec-pretrained-checkpoints/best_both_tracks_and_fsd_mid.pt'))
+
 
     loss_fn = nn.BCEWithLogitsLoss()
     sigmoid = nn.Sigmoid()
@@ -121,15 +145,15 @@ if __name__ == "__main__":
     optimizer = AdamW(optimizer_grouped_parameters, lr=1e-5)
     optimizer.zero_grad()
 
-    writer = SummaryWriter("summary/densenet_aug4", purge_step=0)
-
+    best_acc = 0
+    accuracy, val_auc = evaluate(model, val_loader)
+    print("Baseline: Accuracy - {} AUC - {}".format(accuracy, val_auc))
     for a in range(epochs):
         print("Starting Epoch {}...\n=============".format(a))
         temp_loss = []
         accuracy = []
+        model.train()
         for i, (inputs, labels) in enumerate(train_loader):
-            inputs = inputs[0]
-            print(inputs.shape)
             try:
                 out = model(inputs)
             except RuntimeError:
@@ -146,24 +170,22 @@ if __name__ == "__main__":
                 continue
             temp_loss.append(loss.item())
             accuracy.append(round(label.item()) == round(sigmoid(out).item()))
-            print(accuracy)
             # print(label, sigmoid(out), accuracy[-1])
             if (i + 1) % gradient_accumulation == 0:
                 if len(temp_loss) > 0:
                     mean_loss = sum(temp_loss) / len(temp_loss)
                     print("Training Loss: {}".format(mean_loss))
-                    writer.add_scalar("train/loss", mean_loss, step)
                     temp_loss = []
                 if len(accuracy) > 0:
                     mean_metric = sum(accuracy) / len(accuracy)
                     print("Training Accuracy: {}".format(mean_metric))
-                    writer.add_scalar("train/accuracy", mean_metric, step)
                     accuracy = []
                 print("\n")
                 optimizer.step()
                 optimizer.zero_grad()
-                torch.cuda.empty_cache()        
-
-        accuracy, auc = evaluate(model, val_loader)
-        print(accuracy, auc)
-                
+            torch.cuda.empty_cache()
+        accuracy, val_auc = evaluate(model, val_loader)
+        if accuracy > best_acc:
+            best_acc = accuracy
+            save_model(model, './')
+        print("Epoch {}: Accuracy - {} AUC - {}".format(a,accuracy, val_auc))

@@ -11,7 +11,7 @@ class COVIDWav2Vec(nn.Module):
         self.tokenizer = Wav2Vec2Tokenizer.from_pretrained(
             "facebook/wav2vec2-base-960h"
         )
-        self.model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h", hidden_dropout_prob=0.25)
+        self.model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h")
         self.linear = nn.Linear(768, 1)
         self.device = device
         return

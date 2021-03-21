@@ -10,7 +10,6 @@ import numpy as np
 #import torchaudio
 import torchvision
 from PIL import Image
-#from datasetaug import AudioDataset, MelSpectrogram
 
 
 class COVIDDataset(Dataset):
@@ -18,13 +17,12 @@ class COVIDDataset(Dataset):
         data = pd.read_csv(path)
         self.data = data
         self.path = os.path.dirname(path)
-        if len(grouping_variables) > 0:
-            classes = data.apply(
-                lambda x: "_".join(x[grouping_variables]), axis=1
-            ).to_frame(name="factor")
-            classes["idx"] = classes.index
-            self.classes = classes
-            self.counts = Counter(self.classes["factor"])
+        classes = data.apply(
+            lambda x: "_".join(x[grouping_variables]), axis=1
+        ).to_frame(name="factor")
+        classes["idx"] = classes.index
+        self.classes = classes
+        self.counts = Counter(self.classes["factor"])
         return
 
     def __getitem__(self, i):
@@ -35,50 +33,15 @@ class COVIDDataset(Dataset):
 
     def collate_batch(self, batch):
         inputs = []
-        #transforms = MelSpectrogram(128, mode='train')
         labels = []
         for item in batch:
            audio, sr = sf.read(
                 os.path.join(self.path, "AUDIO", item["File_name"] + ".flac")
-            )[:200000]
+            )
            status = 1 if item["Covid_status"] == "p" else 0
            inputs.append(audio)
            labels.append(status)
         return (inputs, torch.unsqueeze(torch.tensor(labels), 0))
-
-class COVIDTest(Dataset):
-    def __init__(self, path, grouping_variables):
-        data = pd.read_csv(path)
-        self.data = data
-        self.path = os.path.dirname(path)
-        if len(grouping_variables) > 0:
-            classes = data.apply(
-                lambda x: "_".join(x[grouping_variables]), axis=1
-            ).to_frame(name="factor")
-            classes["idx"] = classes.index
-            self.classes = classes
-            self.counts = Counter(self.classes["factor"])
-        return
-
-    def __getitem__(self, i):
-        return self.data.iloc[i]
-
-    def __len__(self):
-        return self.data.shape[0]
-
-    def collate_batch(self, batch):
-        inputs = []
-        #transforms = MelSpectrogram(128, mode='train')
-        labels = []
-        for item in batch:
-           audio, sr = sf.read(
-                os.path.join(self.path, "AUDIO", item["File_name"] + ".flac")
-            )[:200000]
-           status = 1 if item["Covid_status"] == "p" else 0
-           inputs.append(audio)
-           labels.append(status)
-        return (inputs, item["File_name"], torch.unsqueeze(torch.tensor(labels), 0))
-'''
 
 def extract_spectrogram(audio):
     sampling_rate = 44100
@@ -199,4 +162,3 @@ class FSDTestDataset(Dataset):
             inputs.append(audio)
             labels.append(self.label2id[item['label']])
         return (inputs, torch.unsqueeze(torch.tensor(labels),0))
-'''
