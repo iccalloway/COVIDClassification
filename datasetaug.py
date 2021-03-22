@@ -9,6 +9,9 @@ import librosa
 import torchaudio
 import random
 from PIL import Image
+from audio import gain_db_to_ratio, max_dbfs, normalize_audio, AUDIO_TYPE_NP, AUDIO_TYPE_PCM, AUDIO_TYPE_OPUS
+from helpers import LimitingPool, int_range, float_range, pick_value_from_range, tf_pick_value_from_range, MEGABYTE
+import tensorflow as tf
 
 class MelSpectrogram(object):
 	def __init__(self, bins, mode):
@@ -76,5 +79,20 @@ def fetch_dataloader(batch_size, num_workers, mode):
 	dataloader = DataLoader(dataset,shuffle=True, batch_size=batch_size, num_workers=num_workers)
 	return dataloader
 	
+class TimeMask():
+	def __init__(self):
+    		pass
+	def __call__(self, data):
+		return torchaudio.transforms.TimeMasking(0.1).forward(data)
 
-	
+class Volume():
+	def __init__(self, gain=0.3):
+		self.gain = gain
+	def __call__(self, data):
+		return torchaudio.transforms.Vol(self.gain).forward(data)
+
+class FrequencyMask():
+	def __init__(self, mask_param = 3):
+		self.mask_param = mask_param
+	def __call__(self, data):
+		return torchaudio.transforms.FrequencyMasking(self.mask_param).forward(data)
