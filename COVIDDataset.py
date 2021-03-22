@@ -10,10 +10,11 @@ import numpy as np
 import torchaudio
 import torchvision
 from PIL import Image
-from datasetaug import AudioDataset, MelSpectrogram
+from datasetaug import *
+import tensorflow as tf
 
 class COVIDDataset(Dataset):
-    def __init__(self, path, grouping_variables, cnn = False):
+    def __init__(self, path, grouping_variables, cnn = False, data_aug = 0):
         data=pd.read_csv(path)
         self.data = data
         self.path = os.path.dirname(path)
@@ -22,6 +23,7 @@ class COVIDDataset(Dataset):
         self.classes = classes
         self.counts = Counter(self.classes['factor'])
         self.cnn = cnn
+        self.data_aug = data_aug
         return
 
     def __getitem__(self, i):
@@ -32,15 +34,19 @@ class COVIDDataset(Dataset):
 
     def collate_batch(self, batch):
         inputs = []
-        transforms = MelSpectrogram(128, mode='train')
+        transforms = [None, MelSpectrogram(128, mode='train'), FrequencyMask(), TimeMask(), Volume()]
         labels = []
         for item in batch:
             audio, sr = sf.read(os.path.join(self.path, 'AUDIO', item['File_name']+".flac"))
             status = 1 if item['Covid_status'] == 'p' else 0
             # process spectrogram
             if self.cnn:    
-                if np.random.choice([0,1]) == 0:
-                    audio = transforms(audio)
+                aug = np.random.choice([0, 4])         #[0] + [self.data_aug]           
+                if aug == 1:
+                    audio = transforms[aug](audio)
+                elif aug > 0:
+                    audio = extract_spectrogram(audio)
+                    audio = transforms[aug](audio)
                 else:
                     audio = extract_spectrogram(audio)
             inputs.append(audio if not self.cnn else torch.tensor(audio))
@@ -55,7 +61,7 @@ def extract_spectrogram(audio):
     window_sizes = [25, 50, 100]
     hop_sizes = [10, 25, 50]
     centre_sec = 2.5
-
+    #3x128x250
     specs = []
     for i in range(num_channels):
         window_length = int(round(window_sizes[i]*sampling_rate/1000))
