@@ -14,12 +14,48 @@ from torch.utils.data.sampler import WeightedRandomSampler
 from torch.optim import AdamW
 
 from COVIDDataset import COVIDDataset
-from COVIDModels import COVIDWav2Vec, DenseNet
+from COVIDModels import COVIDWav2Vec, DenseNet, COVIDFairseq
 
 def save_model(model, path):
     model = model.module if hasattr(model, "module") else model
     Path(path).mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), os.path.join(path, "model.pt"))
+
+def rename_state_dict_keys(source, key_transformation, target=None):
+    from collections import OrderedDict
+    """
+    source             -> Path to the saved state dict.
+    key_transformation -> Function that accepts the old key names of the state
+                          dict as the only argument and returns the new key name.
+    target (optional)  -> Path at which the new state dict should be saved
+                          (defaults to `source`)
+    Example:
+    Rename the key `layer.0.weight` `layer.1.weight` and keep the names of all
+    other keys.
+    ```py
+    def key_transformation(old_key):
+        if old_key == "layer.0.weight":
+            return "layer.1.weight"
+        return old_key
+    rename_state_dict_keys(state_dict_path, key_transformation)
+    ```
+    """
+    if target is None:
+        target = source
+
+    state_dict = torch.load(source)['model']
+    new_state_dict = OrderedDict()
+
+    for key, value in state_dict.items():
+        new_key = key_transformation(key)
+        new_state_dict[new_key] = value
+
+    return new_state_dict
+
+def fix(old_key):
+    import re
+    return re.sub('^encoder', 'model.encoder', old_key)
+
 
 def evaluate(model, data_loader):
     model.eval()
@@ -92,6 +128,7 @@ if __name__ == "__main__":
         collate_fn=track1.collate_batch,
         drop_last=True
     )
+    
 
     ##Validation DataLoader
     track1_val = Subset(track1, val["idx"])
@@ -116,9 +153,8 @@ if __name__ == "__main__":
     )
 
     #model = DenseNet().to(device)
-    model = COVIDWav2Vec(device).to(device)
-    print(torch.load('wav2vec-pretrained-checkpoints/best_track1_long.pt')['model'])
-    model.load_state_dict(torch.load('wav2vec-pretrained-checkpoints/best_both_tracks_and_fsd_mid.pt'))
+    #model = COVIDWav2Vec(device).to(device)
+    model = COVIDFairseq(device=device, path='wav2vec-pretrained-checkpoints/best_track1_long.pt').to(device)
 
 
     loss_fn = nn.BCEWithLogitsLoss()
@@ -156,10 +192,10 @@ if __name__ == "__main__":
         for i, (inputs, labels) in enumerate(train_loader):
             try:
                 out = model(inputs)
-            except RuntimeError:
+            except RuntimeError as e:
                 torch.cuda.empty_cache()
                 gc.collect()
-                continue
+                raise
             label = labels.to(device)
             loss = loss_fn(out.type(torch.float), label.type(torch.float))
             try:

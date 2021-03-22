@@ -44,17 +44,17 @@ if __name__ == "__main__":
         dataset=track1,
         batch_size=batch_size,
         pin_memory=True,
-        collate_fn=track1.collate_batch,
+        collate_fn=track1.collate_batch
     )
 
     #model = DenseNet().to(device)
     model = COVIDWav2Vec(device).to(device)
+    model.load_state_dict(torch.load('model.pt'))
 
-    ##Load your state dict here
 
     loss_fn = nn.BCEWithLogitsLoss()
     sigmoid = nn.Sigmoid()
 
 
-    test(model, test_loader)
+    test(model, out_path, test_loader)
                 
